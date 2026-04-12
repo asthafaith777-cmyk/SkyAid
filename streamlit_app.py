@@ -40,7 +40,7 @@ PAGE_STYLE = """
         border: 2px solid rgba(255, 255, 255, 0.2);
         backdrop-filter: blur(10px);
     }
-    .stButton>button {
+    .stButton>button:hover {
         background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
         color: white;
         border-radius: 12px;
@@ -53,7 +53,7 @@ PAGE_STYLE = """
         box-shadow: 0 10px 25px rgba(255, 107, 107, 0.3);
         transition: all 0.3s ease;
     }
-    .stButton>button:hover {
+    .stButton>button {
         background: linear-gradient(135deg, #ff5252, #45b7aa);
         transform: translateY(-2px);
         box-shadow: 0 15px 35px rgba(255, 107, 107, 0.4);
