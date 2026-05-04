@@ -258,28 +258,26 @@ min_lon = None
 max_lon = None
 
 
-def to_grid(lat, lon):
-    x = int((lat - min_lat) / (max_lat - min_lat) * (GRID_SIZE - 1))
-    y = int((lon - min_lon) / (max_lon - min_lon) * (GRID_SIZE - 1))
-    return (x, y)
+def to_grid(lat, lon, min_lat_val, max_lat_val, min_lon_val, max_lon_val):
+    if min_lat_val == max_lat_val or min_lon_val == max_lon_val:
+        return (GRID_SIZE // 2, GRID_SIZE // 2)
+    x = int((lat - min_lat_val) / (max_lat_val - min_lat_val) * (GRID_SIZE - 1))
+    y = int((lon - min_lon_val) / (max_lon_val - min_lon_val) * (GRID_SIZE - 1))
+    return (max(0, min(x, GRID_SIZE - 1)), max(0, min(y, GRID_SIZE - 1)))
 
 
 def disaster_zone(cell, scenario_bias=0.0):
     x, y = cell
-    probability = 0.06 + scenario_bias
-    threshold = int(min(max(probability, 0.02), 0.28) * 100)
-    return def disaster_zone(cell, scenario_bias=0.0):
-    x, y = cell
-
+    
     # cluster around center + random variation
     center1 = (10, 10)
     center2 = (20, 18)
-
+    
     if math.dist(cell, center1) < 5 or math.dist(cell, center2) < 6:
         return True
-
+    
     probability = 0.03 + scenario_bias
-    return random.random() < probability < threshold
+    return random.random() < probability
 
 
 def in_no_fly(cell, no_fly_scale=1.0):
@@ -292,24 +290,23 @@ def heuristic(a, b):
 
 def get_neighbors(node, vehicle="drone", scenario_bias=0.0, no_fly_scale=1.0):
     x, y = node
-   moves = [
-    (1, 0), (-1, 0), (0, 1), (0, -1),  # straight
-    (1, 1), (-1, -1), (1, -1), (-1, 1)  # diagonals
-   ]
+    moves = [
+        (1, 0), (-1, 0), (0, 1), (0, -1),  # straight
+        (1, 1), (-1, -1), (1, -1), (-1, 1)  # diagonals
+    ]
     results = []
 
     for dx, dy in moves:
         nx, ny = x + dx, y + dy
 
         if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
-    
             # diagonal moves cost more
-            move_cost = 1.4 if dx != 0 and dy != 0 else 1
-    
+            move_cost = 1.4 if dx != 0 and dy != 0 else 1.0
+            
             if vehicle == "drone":
                 if in_no_fly((nx, ny), no_fly_scale):
                     continue
-    
+            
             if vehicle == "helicopter":
                 if disaster_zone((nx, ny), scenario_bias) and ((nx + ny) % 3 == 0):
                     continue
@@ -333,21 +330,13 @@ def astar(start, goal, vehicle="drone", scenario_bias=0.0, no_fly_scale=1.0):
             break
 
         for neighbor, move_cost in get_neighbors(current, vehicle, scenario_bias, no_fly_scale):
-            cost = 1  # base movement cost
+            cost = move_cost
 
             # Add hazard penalty
             if disaster_zone(neighbor, scenario_bias):
-                cost += 5  # increase this number to make hazards more dangerous
-            
-            if vehicle == "drone" and in_no_fly(neighbor, no_fly_scale):
-                cost += 50  
+                cost += 5
 
-cost = move_cost
-
-if disaster_zone(neighbor, scenario_bias):
-    cost += 5
-
-tentative_g = g_score[current] + cost
+            tentative_g = g_score[current] + cost
 
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
                 came_from[neighbor] = current
@@ -434,10 +423,10 @@ def recommend_vehicle(drone_score, helicopter_score, wind_mph, hazard_count, dis
     return recommendation, reasons
 
 
-def grid_to_latlon(cell):
+def grid_to_latlon(cell, min_lat_val, max_lat_val, min_lon_val, max_lon_val):
     x, y = cell
-    lat = min_lat + (x / GRID_SIZE) * (max_lat - min_lat)
-    lon = min_lon + (y / GRID_SIZE) * (max_lon - min_lon)
+    lat = min_lat_val + (x / (GRID_SIZE - 1)) * (max_lat_val - min_lat_val) if GRID_SIZE > 1 else min_lat_val
+    lon = min_lon_val + (y / (GRID_SIZE - 1)) * (max_lon_val - min_lon_val) if GRID_SIZE > 1 else min_lon_val
     return (lat, lon)
 
 
@@ -466,12 +455,13 @@ def build_map(center):
     return m
 
 
-def draw_simulation_layers(m, scenario_bias=0.0, no_fly_scale=1.0, scenario_color="#e63946"):
+def draw_simulation_layers(m, scenario_bias=0.0, no_fly_scale=1.0, scenario_color="#e63946", 
+                          min_lat_val=None, max_lat_val=None, min_lon_val=None, max_lon_val=None):
     for x in range(GRID_SIZE):
         for y in range(GRID_SIZE):
             if disaster_zone((x, y), scenario_bias):
                 folium.Circle(
-                    location=grid_to_latlon((x, y)),
+                    location=grid_to_latlon((x, y), min_lat_val, max_lat_val, min_lon_val, max_lon_val),
                     radius=400,
                     color=scenario_color,
                     fill=True,
@@ -481,7 +471,7 @@ def draw_simulation_layers(m, scenario_bias=0.0, no_fly_scale=1.0, scenario_colo
                 ).add_to(m)
 
     folium.Circle(
-        location=grid_to_latlon(no_fly_center),
+        location=grid_to_latlon(no_fly_center, min_lat_val, max_lat_val, min_lon_val, max_lon_val),
         radius=no_fly_radius * no_fly_scale * 450,
         color="#d00000",
         weight=2,
@@ -491,8 +481,8 @@ def draw_simulation_layers(m, scenario_bias=0.0, no_fly_scale=1.0, scenario_colo
     ).add_to(m)
 
 
-def calculate_risk(route, distance):
-    hazards = sum(1 for node in route if disaster_zone(node))
+def calculate_risk(route, distance, scenario_bias=0.0):
+    hazards = sum(1 for node in route if disaster_zone(node, scenario_bias))
     if hazards >= 3 or distance > 28:
         return "Critical"
     if hazards >= 1 or distance > 16:
@@ -546,12 +536,14 @@ if submitted:
             route_mode = st.session_state["route_mode"]
 
             geolocator = Nominatim(user_agent="air_response_system")
+            start_loc = None
+            end_loc = None
+            
             try:
                 start_loc = geolocator.geocode(start_place, timeout=10)
                 end_loc = geolocator.geocode(end_place, timeout=10)
             except Exception as exc:
                 st.error(f"Geocoding failed: {exc}")
-                start_loc = end_loc = None
 
             if not start_loc or not end_loc:
                 st.error("Location not found. Try different text.")
@@ -564,8 +556,8 @@ if submitted:
                 min_lon = min(start[1], end[1]) - 0.02
                 max_lon = max(start[1], end[1]) + 0.02
 
-                start_g = to_grid(*start)
-                end_g = to_grid(*end)
+                start_g = to_grid(*start, min_lat, max_lat, min_lon, max_lon)
+                end_g = to_grid(*end, min_lat, max_lat, min_lon, max_lon)
                 center = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2]
                 scenario = st.session_state.get("scenario", "Wildfire")
                 scenario_info = SCENARIO_CONFIG.get(scenario, SCENARIO_CONFIG["Wildfire"])
@@ -582,6 +574,10 @@ if submitted:
                     scenario_bias=scenario_bias,
                     no_fly_scale=no_fly_scale,
                     scenario_color=scenario_color,
+                    min_lat_val=min_lat,
+                    max_lat_val=max_lat,
+                    min_lon_val=min_lon,
+                    max_lon_val=max_lon,
                 )
 
                 folium.Marker(
@@ -606,8 +602,8 @@ if submitted:
                 heli_path = astar(start_g, end_g, "helicopter", scenario_bias, no_fly_scale)
                 progress_bar.progress(75)
 
-                drone_route = [grid_to_latlon(p) for p in drone_path] if drone_path else []
-                heli_route = [grid_to_latlon(p) for p in heli_path] if heli_path else []
+                drone_route = [grid_to_latlon(p, min_lat, max_lat, min_lon, max_lon) for p in drone_path] if drone_path else []
+                heli_route = [grid_to_latlon(p, min_lat, max_lat, min_lon, max_lon) for p in heli_path] if heli_path else []
                 progress_bar.progress(100)
                 progress_bar.empty()
                 st.success("Routes calculated successfully!")
@@ -642,11 +638,13 @@ if submitted:
                 distance_drone = sum(
                     haversine(drone_route[i], drone_route[i + 1])
                     for i in range(len(drone_route) - 1)
-                )
+                ) if len(drone_route) > 1 else 0
+                
                 distance_heli = sum(
                     haversine(heli_route[i], heli_route[i + 1])
                     for i in range(len(heli_route) - 1)
-                )
+                ) if len(heli_route) > 1 else 0
+                
                 hazard_drone = sum(
                     1 for node in drone_path if disaster_zone(node, scenario_bias)
                 )
@@ -671,7 +669,7 @@ if submitted:
                 )
                 selected_hazard = hazard_heli if route_mode == "Helicopter" else hazard_drone
                 time_min = max(selected_distance * 2, 5)
-                risk_level = calculate_risk(selected_nodes, selected_distance)
+                risk_level = calculate_risk(selected_nodes, selected_distance, scenario_bias)
                 best_vehicle = recommendation if route_mode == "Both" else route_mode
 
                 col1, col2 = st.columns([2.4, 1])
