@@ -268,7 +268,18 @@ def disaster_zone(cell, scenario_bias=0.0):
     x, y = cell
     probability = 0.06 + scenario_bias
     threshold = int(min(max(probability, 0.02), 0.28) * 100)
-    return ((x * 17 + y * 13 + 7) % 100) < threshold
+    return def disaster_zone(cell, scenario_bias=0.0):
+    x, y = cell
+
+    # cluster around center + random variation
+    center1 = (10, 10)
+    center2 = (20, 18)
+
+    if math.dist(cell, center1) < 5 or math.dist(cell, center2) < 6:
+        return True
+
+    probability = 0.03 + scenario_bias
+    return random.random() < probability < threshold
 
 
 def in_no_fly(cell, no_fly_scale=1.0):
@@ -276,27 +287,34 @@ def in_no_fly(cell, no_fly_scale=1.0):
 
 
 def heuristic(a, b):
-    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    return math.dist(a, b)
 
 
 def get_neighbors(node, vehicle="drone", scenario_bias=0.0, no_fly_scale=1.0):
     x, y = node
-    moves = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+   moves = [
+    (1, 0), (-1, 0), (0, 1), (0, -1),  # straight
+    (1, 1), (-1, -1), (1, -1), (-1, 1)  # diagonals
+   ]
     results = []
 
     for dx, dy in moves:
         nx, ny = x + dx, y + dy
 
         if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+    
+            # diagonal moves cost more
+            move_cost = 1.4 if dx != 0 and dy != 0 else 1
+    
             if vehicle == "drone":
                 if in_no_fly((nx, ny), no_fly_scale):
                     continue
-
+    
             if vehicle == "helicopter":
                 if disaster_zone((nx, ny), scenario_bias) and ((nx + ny) % 3 == 0):
                     continue
 
-            results.append((nx, ny))
+            results.append(((nx, ny), move_cost))
 
     return results
 
@@ -314,8 +332,22 @@ def astar(start, goal, vehicle="drone", scenario_bias=0.0, no_fly_scale=1.0):
         if current == goal:
             break
 
-        for neighbor in get_neighbors(current, vehicle, scenario_bias, no_fly_scale):
-            tentative_g = g_score[current] + 1
+        for neighbor, move_cost in get_neighbors(current, vehicle, scenario_bias, no_fly_scale):
+            cost = 1  # base movement cost
+
+            # Add hazard penalty
+            if disaster_zone(neighbor, scenario_bias):
+                cost += 5  # increase this number to make hazards more dangerous
+            
+            if vehicle == "drone" and in_no_fly(neighbor, no_fly_scale):
+                cost += 50  
+
+cost = move_cost
+
+if disaster_zone(neighbor, scenario_bias):
+    cost += 5
+
+tentative_g = g_score[current] + cost
 
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
                 came_from[neighbor] = current
