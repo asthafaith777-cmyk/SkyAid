@@ -153,16 +153,16 @@ PAGE_STYLE = """
         width: 100vw;
         height: 100vh;
         pointer-events: none;
-        z-index: 999999;
+        z-index: 1;
         overflow: hidden;
     }
     .star {
         position: absolute;
-        width: 3px;
-        height: 3px;
+        width: 5px;
+        height: 5px;
         background: #ffffff;
         border-radius: 50%;
-        box-shadow: 0 0 4px rgba(255, 255, 255, 1);
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
     }
     .star-twinkle {
         animation: twinkle 3s infinite;
@@ -189,19 +189,32 @@ st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 STARS_HTML = """
 <div class="stars-container" id="starsContainer"></div>
 <script>
-    // Create stars dynamically
-    const container = document.getElementById('starsContainer');
-    const starCount = 100;
-    
-    for (let i = 0; i < starCount; i++) {
-        const star = document.createElement('div');
-        star.className = 'star star-twinkle star-move';
-        star.style.left = Math.random() * 100 + '%';
-        star.style.top = Math.random() * 100 + '%';
-        star.style.animationDelay = (Math.random() * 3) + 's';
-        star.style.animationDuration = (15 + Math.random() * 10) + 's';
-        container.appendChild(star);
+    function createStars() {
+        const container = document.getElementById('starsContainer');
+        if (!container || container.children.length > 0) return; // Already created
+        
+        const starCount = 150;
+        
+        for (let i = 0; i < starCount; i++) {
+            const star = document.createElement('div');
+            star.className = 'star star-twinkle star-move';
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 100 + '%';
+            star.style.animationDelay = (Math.random() * 3) + 's';
+            star.style.animationDuration = (15 + Math.random() * 10) + 's';
+            container.appendChild(star);
+        }
     }
+    
+    // Create stars when document is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', createStars);
+    } else {
+        createStars();
+    }
+    
+    // Recreate on Streamlit reruns
+    window.addEventListener('streamlit:componentReady', createStars);
 </script>
 """
 st.markdown(STARS_HTML, unsafe_allow_html=True)
